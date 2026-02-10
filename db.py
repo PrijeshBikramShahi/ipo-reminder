@@ -1,4 +1,4 @@
-from typing import List, Dict
+from typing import List, Dict, Optional
 from datetime import datetime
 import sqlite3
 
@@ -41,6 +41,9 @@ def save_ipo(company: str, start_date: str, end_date: str) -> int:
     conn.commit()
     conn.close()
     
+    return ipo_id
+
+
 def save_ipos(ipos: List[Dict[str, str]]) -> int:
     """Save multiple IPO records"""
     conn = get_connection()
@@ -60,7 +63,24 @@ def save_ipos(ipos: List[Dict[str, str]]) -> int:
     count = cursor.rowcount
     conn.commit()
     conn.close()
-    
+
     return count
+
+def get_upcoming_ipos(limit: Optional[int] = None) -> List[Dict[str, str]]:
+    conn = get_connection()
+    cursor = conn.cursor()
     
-    return ipo_id
+    query = "SELECT company, start_date, end_date FROM ipos ORDER BY start_date ASC"
+    if limit:
+        query += f" LIMIT {limit}"
+    
+    cursor.execute(query)
+    rows = cursor.fetchall()
+    conn.close()
+    
+    return [
+        {"company": row["company"], "startDate": row["start_date"], "endDate": row["end_date"]}
+        for row in rows
+    ]
+    
+    
