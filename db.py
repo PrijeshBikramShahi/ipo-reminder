@@ -1,5 +1,6 @@
-import sqlite3
+from typing import List, Dict
 from datetime import datetime
+import sqlite3
 
 DB_PATH = "ipos.db"
 
@@ -39,5 +40,27 @@ def save_ipo(company: str, start_date: str, end_date: str) -> int:
     ipo_id = cursor.lastrowid
     conn.commit()
     conn.close()
+    
+def save_ipos(ipos: List[Dict[str, str]]) -> int:
+    """Save multiple IPO records"""
+    conn = get_connection()
+    cursor = conn.cursor()
+    now = datetime.now().isoformat()
+    
+    records = [
+        (ipo["company"], ipo["startDate"], ipo["endDate"], now, now)
+        for ipo in ipos
+    ]
+    
+    cursor.executemany("""
+        INSERT INTO ipos (company, start_date, end_date, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?)
+    """, records)
+    
+    count = cursor.rowcount
+    conn.commit()
+    conn.close()
+    
+    return count
     
     return ipo_id
