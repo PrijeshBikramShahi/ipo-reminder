@@ -1,5 +1,6 @@
 from datetime import datetime
 from bs4 import BeautifulSoup
+import re
 from typing import List, Dict
 import requests
 
@@ -33,6 +34,23 @@ class MerolaganiScraper:
         except Exception as e:
             print(f"Error parsing IPO data: {e}")
             return []
+    
+    def _parse_ipo_entries(self, soup: BeautifulSoup) -> List[Dict[str, str]]:
+        """Parse IPO entries from the BeautifulSoup object"""
+        ipos = []
+        ipo_table = soup.find('table', {'class': 'table'})
+        if not ipo_table:
+            ipo_table = soup.find('table', id=re.compile('ipo', re.I))
+        if not ipo_table:
+            for table in soup.find_all('table'):
+                if 'ipo' in table.get_text().lower() or 'company' in table.get_text().lower():
+                    ipo_table = table
+                    break
+        if ipo_table:
+            ipos = self._parse_table_structure(ipo_table)
+        if not ipos:
+            ipos = self._parse_div_structure(soup)
+        return ipos
 
 def _parse_date(self, date_str: str) -> str:
         """Convert date string to ISO format (stub)"""
