@@ -20,3 +20,10 @@ class MerolaganiScraper:
 def _parse_date(self, date_str: str) -> str:
         """Convert date string to ISO format (stub)"""
         return datetime.now().strftime("%Y-%m-%d")
+    
+def scrape_and_update_db():
+    """
+    Placeholder for scraping IPOs and updating database
+    """
+    print("Scrape and update task triggered... (not implemented)")
+
