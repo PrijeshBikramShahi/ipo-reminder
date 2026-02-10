@@ -1,6 +1,8 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from typing import List, Dict
+import db
+
 
 app = FastAPI(title="IPO Reminder Backend")
 
@@ -33,13 +35,18 @@ SAMPLE_IPOS = [
 
 @app.get("/")
 def root():
-    """Health check endpoint"""
     return {"status": "ok", "message": "IPO Reminder Backend is running"}
 
 
 @app.get("/ipos/upcoming")
 def get_upcoming_ipos() -> List[Dict[str, str]]:
-    """
-    Get upcoming IPO listings
-    """
     return SAMPLE_IPOS
+
+
+if __name__ == "__main__":
+    # Initialize database
+    db.init_db()
+    
+    # Run development server
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000, reload=True)
