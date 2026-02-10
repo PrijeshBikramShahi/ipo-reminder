@@ -35,3 +35,11 @@ SAMPLE_IPOS = [
 def root():
     """Health check endpoint"""
     return {"status": "ok", "message": "IPO Reminder Backend is running"}
+
+
+@app.get("/ipos/upcoming")
+def get_upcoming_ipos() -> List[Dict[str, str]]:
+    """
+    Get upcoming IPO listings
+    """
+    return SAMPLE_IPOS
