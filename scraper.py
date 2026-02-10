@@ -28,7 +28,6 @@ class BSToADConverter:
     }
     
     # Days in each BS month for common years (2080-2085)
-    # Format: {year: [days_in_each_month]}
     BS_MONTH_DAYS = {
         2080: [31, 31, 31, 32, 31, 31, 30, 29, 30, 29, 30, 30],
         2081: [31, 31, 32, 31, 31, 31, 30, 29, 30, 29, 30, 30],
@@ -44,33 +43,20 @@ class BSToADConverter:
     REFERENCE_AD = datetime(2023, 4, 14)
     
     def normalize_month_name(self, month_name: str) -> Optional[int]:
-        """
-        Normalize BS month name to month number (1-12)
-        
-        Args:
-            month_name: BS month name (e.g., "Magh", "Falgun")
-        
-        Returns:
-            Month number (1-12) or None if not recognized
-        """
+        """Normalize BS month name to month number (1-12)"""
         month_lower = month_name.lower().strip()
         return self.BS_MONTHS.get(month_lower)
     
     def parse_bs_date(self, bs_date_str: str) -> Optional[Dict[str, int]]:
         """
         Parse BS date string into components
-        
-        Args:
-            bs_date_str: BS date string (e.g., "28 Magh 2081")
-        
-        Returns:
-            Dictionary with 'year', 'month', 'day' or None if parsing fails
+        Handles formats like "28 Magh 2081" or "28th Magh 2081"
         """
         if not bs_date_str:
             return None
         
-        # Pattern: day month year
-        pattern = r'(\d{1,2})\s+(\w+)\s+(\d{4})'
+        # Pattern: day (with optional ordinal) month year
+        pattern = r'(\d{1,2})(?:st|nd|rd|th)?\s+(\w+)[,\s]+(\d{4})'
         match = re.search(pattern, bs_date_str, re.IGNORECASE)
         
         if not match:
@@ -88,34 +74,18 @@ class BSToADConverter:
         return {'year': year, 'month': month, 'day': day}
     
     def bs_to_ad(self, bs_year: int, bs_month: int, bs_day: int) -> Optional[str]:
-        """
-        Convert BS date to AD date using lookup table and calculation
-        
-        Args:
-            bs_year: BS year
-            bs_month: BS month (1-12)
-            bs_day: BS day
-        
-        Returns:
-            AD date in ISO format (YYYY-MM-DD) or None if conversion fails
-        """
+        """Convert BS date to AD date using lookup table"""
         try:
-            # Validate inputs
             if bs_year not in self.BS_MONTH_DAYS:
-                # For years outside our lookup table, use approximation
                 return self._approximate_bs_to_ad(bs_year, bs_month, bs_day)
             
             if bs_month < 1 or bs_month > 12:
                 return None
             
-            # Validate day is within month range
             if bs_day < 1 or bs_day > self.BS_MONTH_DAYS[bs_year][bs_month - 1]:
                 return None
             
-            # Calculate days from reference point
             days_diff = self._calculate_days_from_reference(bs_year, bs_month, bs_day)
-            
-            # Add to reference AD date
             ad_date = self.REFERENCE_AD + timedelta(days=days_diff)
             
             return ad_date.strftime('%Y-%m-%d')
@@ -125,52 +95,33 @@ class BSToADConverter:
             return None
     
     def _calculate_days_from_reference(self, bs_year: int, bs_month: int, bs_day: int) -> int:
-        """
-        Calculate number of days from reference BS date
-        
-        Args:
-            bs_year: Target BS year
-            bs_month: Target BS month
-            bs_day: Target BS day
-        
-        Returns:
-            Number of days from reference point
-        """
+        """Calculate number of days from reference BS date"""
         days = 0
         ref_year = self.REFERENCE_BS['year']
         ref_month = self.REFERENCE_BS['month']
         ref_day = self.REFERENCE_BS['day']
         
-        # If target date is before reference, calculate backwards
         if bs_year < ref_year or (bs_year == ref_year and bs_month < ref_month):
             return -self._calculate_days_backwards(bs_year, bs_month, bs_day)
         
-        # Calculate forward from reference date
-        # First, complete the reference year if needed
         if bs_year == ref_year:
-            # Same year
             for m in range(ref_month, bs_month):
                 days += self.BS_MONTH_DAYS[bs_year][m - 1]
             days += bs_day - ref_day
         else:
-            # Different years
-            # Complete reference year
             for m in range(ref_month, 13):
                 days += self.BS_MONTH_DAYS[ref_year][m - 1]
-            days -= ref_day - 1  # Subtract remaining days in ref month
+            days -= ref_day - 1
             
-            # Add complete years in between
             for y in range(ref_year + 1, bs_year):
                 if y in self.BS_MONTH_DAYS:
                     days += sum(self.BS_MONTH_DAYS[y])
                 else:
-                    days += 365  # Approximate
+                    days += 365
             
-            # Add months in target year
             for m in range(1, bs_month):
                 days += self.BS_MONTH_DAYS[bs_year][m - 1]
             
-            # Add days in target month
             days += bs_day
         
         return days
@@ -182,48 +133,32 @@ class BSToADConverter:
         ref_month = self.REFERENCE_BS['month']
         ref_day = self.REFERENCE_BS['day']
         
-        # Calculate from target to reference
         if bs_year == ref_year:
             for m in range(bs_month, ref_month):
                 days += self.BS_MONTH_DAYS[bs_year][m - 1]
             days += ref_day - bs_day
         else:
-            # Add remaining days in target month
             days += self.BS_MONTH_DAYS[bs_year][bs_month - 1] - bs_day
             
-            # Add complete months in target year
             for m in range(bs_month + 1, 13):
                 days += self.BS_MONTH_DAYS[bs_year][m - 1]
             
-            # Add complete years
             for y in range(bs_year + 1, ref_year):
                 if y in self.BS_MONTH_DAYS:
                     days += sum(self.BS_MONTH_DAYS[y])
                 else:
                     days += 365
             
-            # Add months in reference year
             for m in range(1, ref_month):
                 days += self.BS_MONTH_DAYS[ref_year][m - 1]
             
-            # Add days in reference month
             days += ref_day
         
         return days
     
     def _approximate_bs_to_ad(self, bs_year: int, bs_month: int, bs_day: int) -> str:
-        """
-        Approximate BS to AD conversion for years outside lookup table
-        BS year - 56/57 ≈ AD year (varies by month)
-        """
-        # Rough approximation: BS - 56.7 = AD
+        """Approximate BS to AD conversion for years outside lookup table"""
         ad_year = bs_year - 57
-        
-        # Approximate month mapping (BS year starts around April)
-        # Months 1-3 (Baisakh-Ashadh) map to April-June
-        # Months 4-6 (Shrawan-Ashwin) map to July-September
-        # Months 7-9 (Kartik-Poush) map to October-December
-        # Months 10-12 (Magh-Chaitra) map to January-March (next AD year)
         
         if bs_month >= 10:
             ad_year += 1
@@ -231,8 +166,7 @@ class BSToADConverter:
         else:
             ad_month = bs_month + 3
         
-        # Clamp day to valid range
-        ad_day = min(bs_day, 28)  # Conservative to avoid invalid dates
+        ad_day = min(bs_day, 28)
         
         try:
             ad_date = datetime(ad_year, ad_month, ad_day)
@@ -241,15 +175,7 @@ class BSToADConverter:
             return datetime(ad_year, ad_month, 1).strftime('%Y-%m-%d')
     
     def convert_bs_date_string(self, bs_date_str: str) -> Optional[str]:
-        """
-        Convert BS date string directly to AD ISO format
-        
-        Args:
-            bs_date_str: BS date string (e.g., "28 Magh 2081")
-        
-        Returns:
-            AD date in ISO format or None
-        """
+        """Convert BS date string directly to AD ISO format"""
         parsed = self.parse_bs_date(bs_date_str)
         if not parsed:
             return None
@@ -260,6 +186,7 @@ class BSToADConverter:
 class MerolaganiScraper:
     """
     Scraper for fetching IPO data from Merolagani
+    Parses the media list format with announcement divs
     """
     
     BASE_URL = "https://www.merolagani.com"
@@ -289,8 +216,8 @@ class MerolaganiScraper:
             # Parse the HTML
             soup = BeautifulSoup(response.content, 'html.parser')
             
-            # Extract IPO entries with BS dates
-            ipos_bs = self._parse_ipo_entries(soup)
+            # Extract IPO entries from media list format
+            ipos_bs = self._parse_media_list(soup)
             
             # Convert BS dates to AD dates
             ipos_with_ad = self._convert_dates_to_ad(ipos_bs)
@@ -303,161 +230,216 @@ class MerolaganiScraper:
             return []
         except Exception as e:
             print(f"Error parsing IPO data: {e}")
+            import traceback
+            traceback.print_exc()
             return []
     
-    def _parse_ipo_entries(self, soup: BeautifulSoup) -> List[Dict[str, str]]:
+    def _parse_media_list(self, soup: BeautifulSoup) -> List[Dict[str, str]]:
         """
-        Parse IPO entries from the BeautifulSoup object
+        Parse IPO entries from the media list format
+        
+        Merolagani uses a structure like:
+        <div class="announcement-list">
+            <div class="media">
+                <div class="media-body">
+                    <small class="text-muted">Posted: 2082/10/15</small>
+                    <a href="...">Company Name - IPO details with 28th Magh - 4th Falgun, 2082</a>
+                </div>
+            </div>
+        </div>
+        """
+        ipos = []
+        
+        # Look for announcement list container
+        announcement_list = soup.find('div', class_='announcement-list')
+        
+        if not announcement_list:
+            # Try alternative selectors
+            announcement_list = soup.find('div', id=re.compile('announcement', re.I))
+        
+        if not announcement_list:
+            # Look for any container with media divs
+            announcement_list = soup.find('div', class_=re.compile('list|container', re.I))
+        
+        if announcement_list:
+            # Find all media divs (each represents an IPO announcement)
+            media_divs = announcement_list.find_all('div', class_='media')
+            
+            print(f"Found {len(media_divs)} media divs in announcement list")
+            
+            for media_div in media_divs:
+                ipo_data = self._parse_media_div(media_div)
+                if ipo_data:
+                    ipos.append(ipo_data)
+        else:
+            print("Warning: Could not find announcement-list div")
+            # Fallback: try to find all media divs on the page
+            all_media_divs = soup.find_all('div', class_='media')
+            print(f"Fallback: Found {len(all_media_divs)} media divs on page")
+            
+            for media_div in all_media_divs:
+                ipo_data = self._parse_media_div(media_div)
+                if ipo_data:
+                    ipos.append(ipo_data)
+        
+        return ipos
+    
+    def _parse_media_div(self, media_div) -> Optional[Dict[str, str]]:
+        """
+        Parse a single media div to extract IPO information
         
         Args:
-            soup: BeautifulSoup object of the IPO page
+            media_div: BeautifulSoup div element with class 'media'
         
         Returns:
-            List of parsed IPO dictionaries with BS dates
+            Dictionary with company, startDateBS, endDateBS, rawText or None
         """
-        ipos = []
-        
-        # Merolagani typically uses a table structure for IPO listings
-        ipo_table = soup.find('table', {'class': 'table'})
-        
-        if not ipo_table:
-            ipo_table = soup.find('table', id=re.compile('ipo', re.I))
-        
-        if not ipo_table:
-            tables = soup.find_all('table')
-            for table in tables:
-                table_text = table.get_text().lower()
-                if 'ipo' in table_text or 'company' in table_text:
-                    ipo_table = table
-                    break
-        
-        if ipo_table:
-            ipos = self._parse_table_structure(ipo_table)
-        
-        # Fallback: Look for div-based structure
-        if not ipos:
-            ipos = self._parse_div_structure(soup)
-        
-        return ipos
+        try:
+            # Find the media-body which contains the announcement text
+            media_body = media_div.find('div', class_='media-body')
+            
+            if not media_body:
+                return None
+            
+            # Find the link element which contains the company name and IPO details
+            link = media_body.find('a')
+            
+            if not link:
+                return None
+            
+            # Get the full announcement text
+            announcement_text = link.get_text(strip=True)
+            raw_text = announcement_text
+            
+            # Skip if this doesn't look like an IPO announcement
+            if 'ipo' not in announcement_text.lower() and 'share' not in announcement_text.lower():
+                return None
+            
+            print(f"Processing announcement: {announcement_text[:100]}...")
+            
+            # Extract company name (usually before the dash or hyphen)
+            company_name = self._extract_company_name(announcement_text)
+            
+            # Extract BS date range
+            # Patterns like: "28th Magh - 4th Falgun, 2082" or "15th to 19th Falgun, 2082"
+            date_info = self._extract_date_range(announcement_text)
+            
+            if company_name and date_info:
+                return {
+                    'company': company_name,
+                    'startDateBS': date_info['start'],
+                    'endDateBS': date_info['end'],
+                    'rawText': raw_text
+                }
+            
+            return None
+            
+        except Exception as e:
+            print(f"Error parsing media div: {e}")
+            return None
     
-    def _parse_table_structure(self, table) -> List[Dict[str, str]]:
-        """Parse IPO data from table structure"""
-        ipos = []
-        rows = table.find_all('tr')
+    def _extract_company_name(self, text: str) -> Optional[str]:
+        """
+        Extract company name from announcement text
         
-        for row in rows:
-            cells = row.find_all(['td', 'th'])
-            
-            if not cells or all(cell.find('th') or cell.name == 'th' for cell in cells):
-                continue
-            
-            cell_texts = [cell.get_text(strip=True) for cell in cells]
-            ipo_data = self._extract_ipo_info(cell_texts, row)
-            
-            if ipo_data:
-                ipos.append(ipo_data)
+        Usually the company name appears before a dash or certain keywords
+        """
+        # Try to find company name before common separators
+        separators = [' - ', ' – ', ' — ', ' IPO', ' Share']
         
-        return ipos
+        for sep in separators:
+            if sep in text:
+                company_part = text.split(sep)[0].strip()
+                if len(company_part) > 3:
+                    return company_part
+        
+        # Fallback: use first part before "of" or other keywords
+        keywords = [' of ', ' from ', ' opens']
+        for keyword in keywords:
+            if keyword in text.lower():
+                parts = text.split(keyword)
+                if len(parts[0].strip()) > 3:
+                    return parts[0].strip()
+        
+        # Last resort: take first meaningful chunk
+        words = text.split()
+        if len(words) >= 3:
+            # Take first 3-5 words as company name
+            return ' '.join(words[:5])
+        
+        return None
     
-    def _parse_div_structure(self, soup: BeautifulSoup) -> List[Dict[str, str]]:
-        """Parse IPO data from div-based structure"""
-        ipos = []
-        ipo_divs = soup.find_all('div', class_=re.compile('ipo|card|item', re.I))
+    def _extract_date_range(self, text: str) -> Optional[Dict[str, str]]:
+        """
+        Extract BS date range from announcement text
         
-        for div in ipo_divs:
-            text_content = div.get_text(strip=True)
+        Handles formats like:
+        - "28th Magh - 4th Falgun, 2082"
+        - "15th to 19th Falgun, 2082"
+        - "from 1st Chaitra to 5th Chaitra, 2082"
+        """
+        # Pattern 1: "DDth Month - DDth Month, YYYY"
+        pattern1 = r'(\d{1,2})(?:st|nd|rd|th)\s+(\w+)\s*[-–—]\s*(\d{1,2})(?:st|nd|rd|th)\s+(\w+),?\s*(\d{4})'
+        match = re.search(pattern1, text, re.IGNORECASE)
+        
+        if match:
+            start_day = match.group(1)
+            start_month = match.group(2)
+            end_day = match.group(3)
+            end_month = match.group(4)
+            year = match.group(5)
             
-            if len(text_content) < 20:
-                continue
-            
-            ipo_data = self._extract_ipo_info([text_content], div)
-            
-            if ipo_data:
-                ipos.append(ipo_data)
-        
-        return ipos
-    
-    def _extract_ipo_info(self, texts: List[str], element) -> Optional[Dict[str, str]]:
-        """Extract IPO information from text content"""
-        company_name = None
-        start_date_bs = None
-        end_date_bs = None
-        raw_text = ' '.join(texts)
-        
-        # Extract company name
-        for text in texts:
-            if not company_name and len(text) > 3:
-                if any(keyword in text for keyword in ['Ltd', 'Limited', 'Bank', 'Finance', 'Insurance', 'Power', 'Hydro', 'Development', 'Company']):
-                    company_name = text
-                    break
-                elif len(text) > 10 and not re.search(r'\d{1,2}\s+\w+\s+\d{4}', text):
-                    company_name = text
-        
-        if not company_name:
-            for text in texts:
-                if len(text) > 5 and not re.search(r'\d{1,2}\s+\w+\s+\d{4}', text):
-                    company_name = text
-                    break
-        
-        # Extract date range
-        date_patterns = [
-            r'(\d{1,2})\s+(\w+)\s+(\d{4})\s+(?:to|-|–|—)\s+(\d{1,2})\s+(\w+)\s+(\d{4})',
-            r'(?:from\s+)?(\d{1,2})\s+(\w+)\s+(\d{4})\s+(?:to|–|—)\s+(\d{1,2})\s+(\w+)\s+(\d{4})',
-        ]
-        
-        for text in texts:
-            for pattern in date_patterns:
-                match = re.search(pattern, text, re.IGNORECASE)
-                if match:
-                    start_day = match.group(1)
-                    start_month = match.group(2)
-                    start_year = match.group(3)
-                    
-                    end_day = match.group(4)
-                    end_month = match.group(5)
-                    end_year = match.group(6)
-                    
-                    start_date_bs = f"{start_day} {start_month} {start_year}"
-                    end_date_bs = f"{end_day} {end_month} {end_year}"
-                    break
-            
-            if start_date_bs and end_date_bs:
-                break
-        
-        if company_name:
             return {
-                'company': company_name.strip(),
-                'startDateBS': start_date_bs.strip() if start_date_bs else '',
-                'endDateBS': end_date_bs.strip() if end_date_bs else '',
-                'rawText': raw_text.strip()
+                'start': f"{start_day} {start_month} {year}",
+                'end': f"{end_day} {end_month} {year}"
+            }
+        
+        # Pattern 2: "DDth to DDth Month, YYYY" (same month)
+        pattern2 = r'(\d{1,2})(?:st|nd|rd|th)\s+(?:to|-)\s+(\d{1,2})(?:st|nd|rd|th)\s+(\w+),?\s*(\d{4})'
+        match = re.search(pattern2, text, re.IGNORECASE)
+        
+        if match:
+            start_day = match.group(1)
+            end_day = match.group(2)
+            month = match.group(3)
+            year = match.group(4)
+            
+            return {
+                'start': f"{start_day} {month} {year}",
+                'end': f"{end_day} {month} {year}"
+            }
+        
+        # Pattern 3: "from DDth Month to DDth Month, YYYY"
+        pattern3 = r'from\s+(\d{1,2})(?:st|nd|rd|th)\s+(\w+)\s+to\s+(\d{1,2})(?:st|nd|rd|th)\s+(\w+),?\s*(\d{4})'
+        match = re.search(pattern3, text, re.IGNORECASE)
+        
+        if match:
+            start_day = match.group(1)
+            start_month = match.group(2)
+            end_day = match.group(3)
+            end_month = match.group(4)
+            year = match.group(5)
+            
+            return {
+                'start': f"{start_day} {start_month} {year}",
+                'end': f"{end_day} {end_month} {year}"
             }
         
         return None
     
     def _convert_dates_to_ad(self, ipos_bs: List[Dict[str, str]]) -> List[Dict[str, str]]:
-        """
-        Convert BS dates to AD dates for all IPO entries
-        
-        Args:
-            ipos_bs: List of IPO dictionaries with BS dates
-        
-        Returns:
-            List of IPO dictionaries with both BS and AD dates
-        """
+        """Convert BS dates to AD dates for all IPO entries"""
         ipos_with_ad = []
         
         for ipo in ipos_bs:
-            # Convert start date
             start_date_ad = None
             if ipo.get('startDateBS'):
                 start_date_ad = self.bs_converter.convert_bs_date_string(ipo['startDateBS'])
             
-            # Convert end date
             end_date_ad = None
             if ipo.get('endDateBS'):
                 end_date_ad = self.bs_converter.convert_bs_date_string(ipo['endDateBS'])
             
-            # Only include IPOs with valid AD conversions
             if start_date_ad and end_date_ad:
                 ipo_entry = {
                     'company': ipo['company'],
@@ -477,9 +459,7 @@ class MerolaganiScraper:
 
 
 def scrape_and_update_db():
-    """
-    Main function to scrape IPOs and update database
-    """
+    """Main function to scrape IPOs and update database"""
     print("=== IPO Scraper Started ===\n")
     
     scraper = MerolaganiScraper()
@@ -518,5 +498,5 @@ def scrape_and_update_db():
 
 
 if __name__ == "__main__":
-    # Test the scraper with date conversion
+    # Test the scraper with the media list format
     scrape_and_update_db()
