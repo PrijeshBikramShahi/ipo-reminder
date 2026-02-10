@@ -75,6 +75,7 @@ class MerolaganiScraper:
         self.session.headers.update({
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
         })
+        self.bs_converter = BSToADConverter()
     
     def fetch_upcoming_ipos(self) -> List[Dict[str, str]]:
         """
@@ -185,6 +186,25 @@ class MerolaganiScraper:
     def convert_bs_to_ad(self, bs_date: str) -> str:
         """Convert BS date to AD (placeholder)"""
         return self._parse_date(bs_date)
+    
+    def _convert_dates_to_ad(self, ipos_bs: List[Dict[str, str]]) -> List[Dict[str, str]]:
+        ipos_with_ad = []
+        for ipo in ipos_bs:
+            start_date_ad = self.bs_converter.convert_bs_date_string(ipo.get('startDateBS'))
+            end_date_ad = self.bs_converter.convert_bs_date_string(ipo.get('endDateBS'))
+            if start_date_ad and end_date_ad:
+                ipos_with_ad.append({
+                    'company': ipo['company'],
+                    'startDateBS': ipo['startDateBS'],
+                    'endDateBS': ipo['endDateBS'],
+                    'startDateAD': start_date_ad,
+                    'endDateAD': end_date_ad,
+                    'rawText': ipo['rawText']
+                })
+            else:
+                print(f"Warning: Could not convert dates for {ipo['company']}")
+        return ipos_with_ad
+
     
     
     
