@@ -27,3 +27,10 @@ def scrape_and_update_db():
     """
     print("Scrape and update task triggered... (not implemented)")
 
+
+if __name__ == "__main__":
+    scraper = MerolaganiScraper()
+    ipos = scraper.fetch_upcoming_ipos()
+    print(f"Found {len(ipos)} IPOs")
+
+
