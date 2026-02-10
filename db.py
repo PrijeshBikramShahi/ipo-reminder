@@ -9,10 +9,8 @@ def get_connection():
     return conn
 
 def init_db():
-    """Initialize database and create tables if they don't exist"""
     conn = get_connection()
     cursor = conn.cursor()
-    
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS ipos (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -23,7 +21,23 @@ def init_db():
             updated_at TEXT NOT NULL
         )
     """)
-    
     conn.commit()
     conn.close()
     print(f"Database initialized at {DB_PATH}")
+
+def save_ipo(company: str, start_date: str, end_date: str) -> int:
+    """Save a single IPO record"""
+    conn = get_connection()
+    cursor = conn.cursor()
+    now = datetime.now().isoformat()
+    
+    cursor.execute("""
+        INSERT INTO ipos (company, start_date, end_date, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?)
+    """, (company, start_date, end_date, now, now))
+    
+    ipo_id = cursor.lastrowid
+    conn.commit()
+    conn.close()
+    
+    return ipo_id
