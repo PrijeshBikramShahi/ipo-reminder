@@ -3,6 +3,24 @@ import requests
 from bs4 import BeautifulSoup
 import re
 from datetime import datetime, timedelta
+import logging
+import sys
+import os
+
+# Configure logging
+LOG_DIR = "logs"
+os.makedirs(LOG_DIR, exist_ok=True)
+
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler(f"{LOG_DIR}/scraper_{datetime.now().strftime('%Y%m%d')}.log"),
+        logging.StreamHandler(sys.stdout)
+    ]
+)
+
+logger = logging.getLogger(__name__)
 
 
 class BSToADConverter:
@@ -11,7 +29,6 @@ class BSToADConverter:
     Uses a lookup table for BS to AD conversion
     """
     
-    # BS month names (Nepali calendar months)
     BS_MONTHS = {
         'baisakh': 1, 'baishakh': 1,
         'jestha': 2, 'jeth': 2,
@@ -27,7 +44,6 @@ class BSToADConverter:
         'chaitra': 12, 'chait': 12
     }
     
-    # Days in each BS month for common years (2080-2085)
     BS_MONTH_DAYS = {
         2080: [31, 31, 31, 32, 31, 31, 30, 29, 30, 29, 30, 30],
         2081: [31, 31, 32, 31, 31, 31, 30, 29, 30, 29, 30, 30],
@@ -38,7 +54,6 @@ class BSToADConverter:
         2086: [31, 31, 31, 32, 31, 31, 30, 29, 30, 29, 30, 30],
     }
     
-    # Reference point: BS 2080/1/1 = AD 2023/4/14
     REFERENCE_BS = {'year': 2080, 'month': 1, 'day': 1}
     REFERENCE_AD = datetime(2023, 4, 14)
     
@@ -48,14 +63,10 @@ class BSToADConverter:
         return self.BS_MONTHS.get(month_lower)
     
     def parse_bs_date(self, bs_date_str: str) -> Optional[Dict[str, int]]:
-        """
-        Parse BS date string into components
-        Handles formats like "28 Magh 2081" or "28th Magh 2081"
-        """
+        """Parse BS date string into components"""
         if not bs_date_str:
             return None
         
-        # Pattern: day (with optional ordinal) month year
         pattern = r'(\d{1,2})(?:st|nd|rd|th)?\s+(\w+)[,\s]+(\d{4})'
         match = re.search(pattern, bs_date_str, re.IGNORECASE)
         
@@ -91,7 +102,7 @@ class BSToADConverter:
             return ad_date.strftime('%Y-%m-%d')
             
         except Exception as e:
-            print(f"Error converting BS to AD ({bs_year}/{bs_month}/{bs_day}): {e}")
+            logger.error(f"Error converting BS to AD ({bs_year}/{bs_month}/{bs_day}): {e}")
             return None
     
     def _calculate_days_from_reference(self, bs_year: int, bs_month: int, bs_day: int) -> int:
@@ -184,10 +195,7 @@ class BSToADConverter:
 
 
 class MerolaganiScraper:
-    """
-    Scraper for fetching IPO data from Merolagani
-    Parses the media list format with announcement divs
-    """
+    """Scraper for fetching IPO data from Merolagani"""
     
     BASE_URL = "https://www.merolagani.com"
     IPO_URL = f"{BASE_URL}/Ipo.aspx?type=upcoming"
@@ -200,82 +208,52 @@ class MerolaganiScraper:
         self.bs_converter = BSToADConverter()
     
     def fetch_upcoming_ipos(self) -> List[Dict[str, str]]:
-        """
-        Fetch upcoming IPO listings from Merolagani
-        
-        Returns:
-            List of IPO dictionaries with company, dates (BS and AD), and rawText
-        """
+        """Fetch upcoming IPO listings from Merolagani"""
         try:
-            print(f"Fetching IPOs from {self.IPO_URL}...")
-            response = self.session.get(self.IPO_URL, timeout=10)
+            logger.info(f"Fetching IPOs from {self.IPO_URL}")
+            response = self.session.get(self.IPO_URL, timeout=15)
             response.raise_for_status()
             
-            print(f"Response status: {response.status_code}")
+            logger.info(f"Response status: {response.status_code}")
             
-            # Parse the HTML
             soup = BeautifulSoup(response.content, 'html.parser')
-            
-            # Extract IPO entries from media list format
             ipos_bs = self._parse_media_list(soup)
-            
-            # Convert BS dates to AD dates
             ipos_with_ad = self._convert_dates_to_ad(ipos_bs)
             
-            print(f"Found {len(ipos_with_ad)} IPO entries with valid dates")
+            logger.info(f"Successfully scraped {len(ipos_with_ad)} IPOs with valid dates")
             return ipos_with_ad
             
         except requests.RequestException as e:
-            print(f"Error fetching IPO data: {e}")
+            logger.error(f"Network error fetching IPO data: {e}")
             return []
         except Exception as e:
-            print(f"Error parsing IPO data: {e}")
-            import traceback
-            traceback.print_exc()
+            logger.error(f"Error parsing IPO data: {e}", exc_info=True)
             return []
     
     def _parse_media_list(self, soup: BeautifulSoup) -> List[Dict[str, str]]:
-        """
-        Parse IPO entries from the media list format
-        
-        Merolagani uses a structure like:
-        <div class="announcement-list">
-            <div class="media">
-                <div class="media-body">
-                    <small class="text-muted">Posted: 2082/10/15</small>
-                    <a href="...">Company Name - IPO details with 28th Magh - 4th Falgun, 2082</a>
-                </div>
-            </div>
-        </div>
-        """
+        """Parse IPO entries from the media list format"""
         ipos = []
         
-        # Look for announcement list container
         announcement_list = soup.find('div', class_='announcement-list')
         
         if not announcement_list:
-            # Try alternative selectors
             announcement_list = soup.find('div', id=re.compile('announcement', re.I))
         
         if not announcement_list:
-            # Look for any container with media divs
             announcement_list = soup.find('div', class_=re.compile('list|container', re.I))
         
         if announcement_list:
-            # Find all media divs (each represents an IPO announcement)
             media_divs = announcement_list.find_all('div', class_='media')
-            
-            print(f"Found {len(media_divs)} media divs in announcement list")
+            logger.info(f"Found {len(media_divs)} media divs in announcement list")
             
             for media_div in media_divs:
                 ipo_data = self._parse_media_div(media_div)
                 if ipo_data:
                     ipos.append(ipo_data)
         else:
-            print("Warning: Could not find announcement-list div")
-            # Fallback: try to find all media divs on the page
+            logger.warning("Could not find announcement-list div, trying fallback")
             all_media_divs = soup.find_all('div', class_='media')
-            print(f"Fallback: Found {len(all_media_divs)} media divs on page")
+            logger.info(f"Fallback: Found {len(all_media_divs)} media divs on page")
             
             for media_div in all_media_divs:
                 ipo_data = self._parse_media_div(media_div)
@@ -285,43 +263,27 @@ class MerolaganiScraper:
         return ipos
     
     def _parse_media_div(self, media_div) -> Optional[Dict[str, str]]:
-        """
-        Parse a single media div to extract IPO information
-        
-        Args:
-            media_div: BeautifulSoup div element with class 'media'
-        
-        Returns:
-            Dictionary with company, startDateBS, endDateBS, rawText or None
-        """
+        """Parse a single media div to extract IPO information"""
         try:
-            # Find the media-body which contains the announcement text
             media_body = media_div.find('div', class_='media-body')
             
             if not media_body:
                 return None
             
-            # Find the link element which contains the company name and IPO details
             link = media_body.find('a')
             
             if not link:
                 return None
             
-            # Get the full announcement text
             announcement_text = link.get_text(strip=True)
             raw_text = announcement_text
             
-            # Skip if this doesn't look like an IPO announcement
             if 'ipo' not in announcement_text.lower() and 'share' not in announcement_text.lower():
                 return None
             
-            print(f"Processing announcement: {announcement_text[:100]}...")
+            logger.debug(f"Processing: {announcement_text[:100]}")
             
-            # Extract company name (usually before the dash or hyphen)
             company_name = self._extract_company_name(announcement_text)
-            
-            # Extract BS date range
-            # Patterns like: "28th Magh - 4th Falgun, 2082" or "15th to 19th Falgun, 2082"
             date_info = self._extract_date_range(announcement_text)
             
             if company_name and date_info:
@@ -335,16 +297,11 @@ class MerolaganiScraper:
             return None
             
         except Exception as e:
-            print(f"Error parsing media div: {e}")
+            logger.error(f"Error parsing media div: {e}")
             return None
     
     def _extract_company_name(self, text: str) -> Optional[str]:
-        """
-        Extract company name from announcement text
-        
-        Usually the company name appears before a dash or certain keywords
-        """
-        # Try to find company name before common separators
+        """Extract company name from announcement text"""
         separators = [' - ', ' – ', ' — ', ' IPO', ' Share']
         
         for sep in separators:
@@ -353,7 +310,6 @@ class MerolaganiScraper:
                 if len(company_part) > 3:
                     return company_part
         
-        # Fallback: use first part before "of" or other keywords
         keywords = [' of ', ' from ', ' opens']
         for keyword in keywords:
             if keyword in text.lower():
@@ -361,68 +317,39 @@ class MerolaganiScraper:
                 if len(parts[0].strip()) > 3:
                     return parts[0].strip()
         
-        # Last resort: take first meaningful chunk
         words = text.split()
         if len(words) >= 3:
-            # Take first 3-5 words as company name
             return ' '.join(words[:5])
         
         return None
     
     def _extract_date_range(self, text: str) -> Optional[Dict[str, str]]:
-        """
-        Extract BS date range from announcement text
-        
-        Handles formats like:
-        - "28th Magh - 4th Falgun, 2082"
-        - "15th to 19th Falgun, 2082"
-        - "from 1st Chaitra to 5th Chaitra, 2082"
-        """
-        # Pattern 1: "DDth Month - DDth Month, YYYY"
+        """Extract BS date range from announcement text"""
         pattern1 = r'(\d{1,2})(?:st|nd|rd|th)\s+(\w+)\s*[-–—]\s*(\d{1,2})(?:st|nd|rd|th)\s+(\w+),?\s*(\d{4})'
         match = re.search(pattern1, text, re.IGNORECASE)
         
         if match:
-            start_day = match.group(1)
-            start_month = match.group(2)
-            end_day = match.group(3)
-            end_month = match.group(4)
-            year = match.group(5)
-            
             return {
-                'start': f"{start_day} {start_month} {year}",
-                'end': f"{end_day} {end_month} {year}"
+                'start': f"{match.group(1)} {match.group(2)} {match.group(5)}",
+                'end': f"{match.group(3)} {match.group(4)} {match.group(5)}"
             }
         
-        # Pattern 2: "DDth to DDth Month, YYYY" (same month)
         pattern2 = r'(\d{1,2})(?:st|nd|rd|th)\s+(?:to|-)\s+(\d{1,2})(?:st|nd|rd|th)\s+(\w+),?\s*(\d{4})'
         match = re.search(pattern2, text, re.IGNORECASE)
         
         if match:
-            start_day = match.group(1)
-            end_day = match.group(2)
-            month = match.group(3)
-            year = match.group(4)
-            
             return {
-                'start': f"{start_day} {month} {year}",
-                'end': f"{end_day} {month} {year}"
+                'start': f"{match.group(1)} {match.group(3)} {match.group(4)}",
+                'end': f"{match.group(2)} {match.group(3)} {match.group(4)}"
             }
         
-        # Pattern 3: "from DDth Month to DDth Month, YYYY"
         pattern3 = r'from\s+(\d{1,2})(?:st|nd|rd|th)\s+(\w+)\s+to\s+(\d{1,2})(?:st|nd|rd|th)\s+(\w+),?\s*(\d{4})'
         match = re.search(pattern3, text, re.IGNORECASE)
         
         if match:
-            start_day = match.group(1)
-            start_month = match.group(2)
-            end_day = match.group(3)
-            end_month = match.group(4)
-            year = match.group(5)
-            
             return {
-                'start': f"{start_day} {start_month} {year}",
-                'end': f"{end_day} {end_month} {year}"
+                'start': f"{match.group(1)} {match.group(2)} {match.group(5)}",
+                'end': f"{match.group(3)} {match.group(4)} {match.group(5)}"
             }
         
         return None
@@ -451,52 +378,69 @@ class MerolaganiScraper:
                 }
                 ipos_with_ad.append(ipo_entry)
             else:
-                print(f"Warning: Could not convert dates for {ipo['company']}")
-                print(f"  Start BS: {ipo.get('startDateBS')} -> AD: {start_date_ad}")
-                print(f"  End BS: {ipo.get('endDateBS')} -> AD: {end_date_ad}")
+                logger.warning(f"Could not convert dates for {ipo['company']}: "
+                             f"Start BS={ipo.get('startDateBS')} -> AD={start_date_ad}, "
+                             f"End BS={ipo.get('endDateBS')} -> AD={end_date_ad}")
         
         return ipos_with_ad
 
 
 def scrape_and_update_db():
     """Main function to scrape IPOs and update database"""
-    print("=== IPO Scraper Started ===\n")
+    logger.info("=" * 60)
+    logger.info("IPO Scraper Job Started")
+    logger.info("=" * 60)
     
-    scraper = MerolaganiScraper()
-    ipos = scraper.fetch_upcoming_ipos()
-    
-    if not ipos:
-        print("No IPO data found or error occurred")
-        return
-    
-    print(f"\n=== Scraped {len(ipos)} IPOs with Valid Dates ===\n")
-    for i, ipo in enumerate(ipos, 1):
-        print(f"{i}. {ipo['company']}")
-        print(f"   BS: {ipo['startDateBS']} to {ipo['endDateBS']}")
-        print(f"   AD: {ipo['startDateAD']} to {ipo['endDateAD']}")
-        print(f"   Raw: {ipo['rawText'][:80]}...")
-        print()
-    
-    # TODO: Save to database
-    # import db
-    # db_ready_ipos = [
-    #     {
-    #         'company': ipo['company'],
-    #         'startDate': ipo['startDateAD'],
-    #         'endDate': ipo['endDateAD']
-    #     }
-    #     for ipo in ipos
-    # ]
-    # 
-    # db.clear_all_ipos()
-    # count = db.save_ipos(db_ready_ipos)
-    # print(f"=== Updated database with {count} IPO records ===")
-    
-    print("=== Scraper Completed ===")
-    
-    return ipos
+    try:
+        scraper = MerolaganiScraper()
+        ipos = scraper.fetch_upcoming_ipos()
+        
+        if not ipos:
+            logger.warning("No IPO data found or scraping failed")
+            return False
+        
+        logger.info(f"Successfully scraped {len(ipos)} IPOs")
+        
+        # Import db module and update database
+        import db
+        
+        # Prepare data for database
+        db_ready_ipos = [
+            {
+                'company': ipo['company'],
+                'startDate': ipo['startDateAD'],
+                'endDate': ipo['endDateAD']
+            }
+            for ipo in ipos
+        ]
+        
+        # Clear old data and insert new data
+        logger.info("Updating database...")
+        db.clear_all_ipos()
+        count = db.save_ipos(db_ready_ipos)
+        
+        logger.info(f"Successfully updated database with {count} IPO records")
+        
+        # Log details of each IPO
+        for i, ipo in enumerate(ipos, 1):
+            logger.info(f"  {i}. {ipo['company']}")
+            logger.info(f"     BS: {ipo['startDateBS']} to {ipo['endDateBS']}")
+            logger.info(f"     AD: {ipo['startDateAD']} to {ipo['endDateAD']}")
+        
+        logger.info("=" * 60)
+        logger.info("IPO Scraper Job Completed Successfully")
+        logger.info("=" * 60)
+        
+        return True
+        
+    except Exception as e:
+        logger.error(f"Fatal error in scraper job: {e}", exc_info=True)
+        logger.info("=" * 60)
+        logger.info("IPO Scraper Job Failed")
+        logger.info("=" * 60)
+        return False
 
 
 if __name__ == "__main__":
-    # Test the scraper with the media list format
-    scrape_and_update_db()
+    success = scrape_and_update_db()
+    sys.exit(0 if success else 1)
