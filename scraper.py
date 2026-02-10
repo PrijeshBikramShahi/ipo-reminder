@@ -64,7 +64,19 @@ class MerolaganiScraper:
             if ipo_data:
                 ipos.append(ipo_data)
         return ipos
-
+    
+    def _parse_div_structure(self, soup: BeautifulSoup) -> List[Dict[str, str]]:
+        ipos = []
+        ipo_divs = soup.find_all('div', class_=re.compile('ipo|card|item', re.I))
+        for div in ipo_divs:
+            text_content = div.get_text(strip=True)
+            if len(text_content) < 20:
+                continue
+            ipo_data = self._extract_ipo_info([text_content], div)
+            if ipo_data:
+                ipos.append(ipo_data)
+        return ipos
+    
 def _parse_date(self, date_str: str) -> str:
         """Convert date string to ISO format (stub)"""
         return datetime.now().strftime("%Y-%m-%d")
