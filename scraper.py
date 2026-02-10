@@ -118,11 +118,16 @@ class MerolaganiScraper:
             }
         return None
 
-    
-    
-def _parse_date(self, date_str: str) -> str:
-        """Convert date string to ISO format (stub)"""
+    def _parse_date(self, date_str: str) -> str:
+        """Parse Nepali BS date to ISO format (placeholder)"""
         return datetime.now().strftime("%Y-%m-%d")
+
+    def convert_bs_to_ad(self, bs_date: str) -> str:
+        """Convert BS date to AD (placeholder)"""
+        return self._parse_date(bs_date)
+    
+    
+    
     
 def scrape_and_update_db():
     """
