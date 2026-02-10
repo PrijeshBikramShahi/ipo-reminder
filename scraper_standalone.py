@@ -275,25 +275,47 @@ class MerolaganiScraper:
             return None
     
     def _extract_company_name(self, text: str) -> Optional[str]:
-        separators = [' - ', ' – ', ' — ', ' IPO', ' Share']
-        
+        """Extract company name from announcement text"""
+    
+        # Pattern 1: Company name followed by "is going to issue"
+        pattern1 = r'^(.+?)\s+is going to issue'
+        match = re.search(pattern1, text, re.IGNORECASE)
+        if match:
+            return match.group(1).strip()
+    
+        # Pattern 2: Company name before " - IPO" or similar
+        separators = [' - IPO', ' – IPO', ' — IPO', ' IPO ', ' Share']
         for sep in separators:
             if sep in text:
                 company_part = text.split(sep)[0].strip()
-                if len(company_part) > 3:
+                if len(company_part) > 3 and len(company_part) < 100:
                     return company_part
-        
+    
+        # Pattern 3: Look for text before "of" or "from"
         keywords = [' of ', ' from ', ' opens']
         for keyword in keywords:
             if keyword in text.lower():
                 parts = text.split(keyword)
-                if len(parts[0].strip()) > 3:
-                    return parts[0].strip()
-        
+                company_part = parts[0].strip()
+                if len(company_part) > 3 and len(company_part) < 100:
+                    return company_part
+    
+        # Pattern 4: Extract up to first "is" or "has" (common in announcements)
+        pattern2 = r'^(.+?)\s+(?:is|has|will)\s+'
+        match = re.search(pattern2, text, re.IGNORECASE)
+        if match:
+            company = match.group(1).strip()
+            if len(company) > 3 and len(company) < 100:
+                return company
+    
+        # Fallback: Take first 3-7 words (but avoid long text)
         words = text.split()
         if len(words) >= 3:
-            return ' '.join(words[:5])
-        
+            for word_count in range(min(7, len(words)), 2, -1):
+                candidate = ' '.join(words[:word_count])
+                if len(candidate) < 100:
+                    return candidate
+    
         return None
     
     def _extract_date_range(self, text: str) -> Optional[Dict[str, str]]:
