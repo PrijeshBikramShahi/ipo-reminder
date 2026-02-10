@@ -1,8 +1,68 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 from bs4 import BeautifulSoup
 import re
 from typing import List, Dict, Optional
 import requests
+
+class BSToADConverter:
+    """Converter for Bikram Sambat (BS) to Anno Domini (AD) dates"""
+    
+    BS_MONTHS = {
+        'baisakh': 1, 'baishakh': 1, 'baisak': 1, 'baishak': 1,
+        'jestha': 2, 'jeth': 2, 'jesth': 2,
+        'ashadh': 3, 'asar': 3, 'ashad': 3, 'ashaar': 3,
+        'shrawan': 4, 'shravan': 4, 'sawan': 4,
+        'bhadra': 5, 'bhadau': 5,
+        'ashwin': 6, 'ashoj': 6,
+        'kartik': 7,
+        'mangsir': 8, 'mangshir': 8,
+        'poush': 9, 'paush': 9, 'push': 9,
+        'magh': 10, 'maghe': 10,
+        'falgun': 11, 'phalgun': 11,
+        'chaitra': 12, 'chait': 12
+    }
+    
+    BS_MONTH_DAYS = {
+        2080: [31, 31, 31, 32, 31, 31, 30, 29, 30, 29, 30, 30],
+        2081: [31, 31, 32, 31, 31, 31, 30, 29, 30, 29, 30, 30],
+        2082: [31, 32, 31, 32, 31, 30, 30, 30, 29, 29, 30, 30],
+        2083: [31, 31, 31, 32, 31, 31, 30, 29, 30, 29, 30, 30],
+        2084: [31, 31, 32, 31, 31, 31, 30, 29, 30, 29, 30, 30],
+        2085: [31, 32, 31, 32, 31, 30, 30, 30, 29, 29, 30, 30],
+        2086: [31, 31, 31, 32, 31, 31, 30, 29, 30, 29, 30, 30],
+    }
+    
+    REFERENCE_BS = {'year': 2080, 'month': 1, 'day': 1}
+    REFERENCE_AD = datetime(2023, 4, 14)
+    
+    def normalize_month_name(self, month_name: str) -> Optional[int]:
+        return self.BS_MONTHS.get(month_name.lower().strip())
+    
+    def parse_bs_date(self, bs_date_str: str) -> Optional[Dict[str, int]]:
+        pattern = r'(\d{1,2})\s+(\w+)\s+(\d{4})'
+        match = re.search(pattern, bs_date_str, re.IGNORECASE)
+        if not match:
+            return None
+        day, month_name, year = int(match.group(1)), match.group(2), int(match.group(3))
+        month = self.normalize_month_name(month_name)
+        if not month:
+            return None
+        return {'year': year, 'month': month, 'day': day}
+    
+    def bs_to_ad(self, bs_year: int, bs_month: int, bs_day: int) -> Optional[str]:
+        if bs_year not in self.BS_MONTH_DAYS:
+            return self._approximate_bs_to_ad(bs_year, bs_month, bs_day)
+        if bs_month < 1 or bs_month > 12:
+            return None
+        if bs_day < 1 or bs_day > self.BS_MONTH_DAYS[bs_year][bs_month - 1]:
+            return None
+        days_diff = self._calculate_days_from_reference(bs_year, bs_month, bs_day)
+        ad_date = self.REFERENCE_AD + timedelta(days=days_diff)
+        return ad_date.strftime('%Y-%m-%d')
+    
+    # Internal helper methods (_calculate_days_from_reference, _calculate_days_backwards, _approximate_bs_to_ad)
+    # and convert_bs_date_string as in the provided extended code
+
 
 class MerolaganiScraper:
     """Scraper for fetching IPO data from Merolagani"""
