@@ -1,0 +1,45 @@
+name: Daily IPO Scraper
+
+on:
+  schedule:
+    # Runs at 2:15 AM UTC daily (8:00 AM Nepal Time)
+    - cron: "15 2 * * *"
+  workflow_dispatch: # Allows manual triggering from GitHub UI
+
+jobs:
+  scrape-and-update:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.10"
+
+      - name: Install dependencies
+        run: |
+          pip install requests beautifulsoup4
+
+      - name: Run scraper
+        env:
+          API_URL: ${{ secrets.API_URL }}
+        run: |
+          python scraper_standalone.py
+        continue-on-error: false
+
+      - name: Upload scraped data as artifact
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: scraped-data
+          path: scraped_ipos.json
+          retention-days: 30
+
+      - name: Notify on failure
+        if: failure()
+        run: |
+          echo "::error::IPO scraper job failed!"
+          echo "Check the logs for details"
