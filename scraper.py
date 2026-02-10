@@ -1,7 +1,7 @@
 from datetime import datetime
 from bs4 import BeautifulSoup
 import re
-from typing import List, Dict
+from typing import List, Dict, Optional
 import requests
 
 class MerolaganiScraper:
@@ -76,6 +76,49 @@ class MerolaganiScraper:
             if ipo_data:
                 ipos.append(ipo_data)
         return ipos
+    
+    def _extract_ipo_info(self, texts: List[str], element) -> Optional[Dict[str, str]]:
+        company_name = None
+        start_date_bs = None
+        end_date_bs = None
+        raw_text = ' '.join(texts)
+        # Heuristic for company name
+        for text in texts:
+            if not company_name and len(text) > 3:
+                if any(k in text for k in ['Ltd', 'Limited', 'Bank', 'Finance', 'Insurance', 'Power', 'Hydro', 'Development']):
+                    company_name = text
+                    break
+                elif len(text) > 10 and not re.search(r'\d{1,2}\s+\w+\s+\d{4}', text):
+                    company_name = text
+        if not company_name:
+            for text in texts:
+                if len(text) > 5 and not re.search(r'\d{1,2}\s+\w+\s+\d{4}', text):
+                    company_name = text
+                    break
+        # Date patterns
+        date_patterns = [
+            r'(\d{1,2})\s+(\w+)\s+(\d{4})\s+(?:to|-)\s+(\d{1,2})\s+(\w+)\s+(\d{4})',
+            r'(?:from\s+)?(\d{1,2})\s+(\w+)\s+(\d{4})\s+(?:to|–|—)\s+(\d{1,2})\s+(\w+)\s+(\d{4})',
+        ]
+        for text in texts:
+            for pattern in date_patterns:
+                match = re.search(pattern, text, re.IGNORECASE)
+                if match:
+                    start_date_bs = f"{match.group(1)} {match.group(2)} {match.group(3)}"
+                    end_date_bs = f"{match.group(4)} {match.group(5)} {match.group(6)}"
+                    break
+            if start_date_bs and end_date_bs:
+                break
+        if company_name:
+            return {
+                'company': company_name.strip(),
+                'startDateBS': start_date_bs.strip() if start_date_bs else '',
+                'endDateBS': end_date_bs.strip() if end_date_bs else '',
+                'rawText': raw_text.strip()
+            }
+        return None
+
+    
     
 def _parse_date(self, date_str: str) -> str:
         """Convert date string to ISO format (stub)"""
