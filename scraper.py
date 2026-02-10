@@ -128,17 +128,22 @@ class MerolaganiScraper:
     
     
     
-    
 def scrape_and_update_db():
-    """
-    Placeholder for scraping IPOs and updating database
-    """
-    print("Scrape and update task triggered... (not implemented)")
-
-
-if __name__ == "__main__":
+    print("=== IPO Scraper Started ===")
     scraper = MerolaganiScraper()
     ipos = scraper.fetch_upcoming_ipos()
-    print(f"Found {len(ipos)} IPOs")
+    if not ipos:
+        print("No IPO data found or error occurred")
+        return
+    print(f"\n=== Scraped {len(ipos)} IPOs ===")
+    for i, ipo in enumerate(ipos, 1):
+        print(f"\n{i}. {ipo['company']}")
+        print(f"   Start: {ipo['startDateBS']}")
+        print(f"   End: {ipo['endDateBS']}")
+        print(f"   Raw: {ipo['rawText'][:100]}...")
+    print("\n=== Scraper Completed ===")
+
+if __name__ == "__main__":
+    scrape_and_update_db()
 
 
