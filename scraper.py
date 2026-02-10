@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import List, Dict
 import requests
 
@@ -15,3 +16,7 @@ class MerolaganiScraper:
         """Placeholder for fetching IPOs"""
         print("Fetching IPOs... (not implemented)")
         return []
+
+def _parse_date(self, date_str: str) -> str:
+        """Convert date string to ISO format (stub)"""
+        return datetime.now().strftime("%Y-%m-%d")
