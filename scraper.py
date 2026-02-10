@@ -1,4 +1,5 @@
 from datetime import datetime
+from bs4 import BeautifulSoup
 from typing import List, Dict
 import requests
 
@@ -15,9 +16,23 @@ class MerolaganiScraper:
         })
     
     def fetch_upcoming_ipos(self) -> List[Dict[str, str]]:
-        """Placeholder for fetching IPOs"""
-        print("Fetching IPOs... (not implemented)")
-        return []
+        """
+        Fetch upcoming IPO listings from Merolagani
+        """
+        try:
+            print(f"Fetching IPOs from {self.IPO_URL}...")
+            response = self.session.get(self.IPO_URL, timeout=10)
+            response.raise_for_status()
+            soup = BeautifulSoup(response.content, 'html.parser')
+            ipos = self._parse_ipo_entries(soup)
+            print(f"Found {len(ipos)} IPO entries")
+            return ipos
+        except requests.RequestException as e:
+            print(f"Error fetching IPO data: {e}")
+            return []
+        except Exception as e:
+            print(f"Error parsing IPO data: {e}")
+            return []
 
 def _parse_date(self, date_str: str) -> str:
         """Convert date string to ISO format (stub)"""
