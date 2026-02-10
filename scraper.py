@@ -51,6 +51,19 @@ class MerolaganiScraper:
         if not ipos:
             ipos = self._parse_div_structure(soup)
         return ipos
+    
+    def _parse_table_structure(self, table) -> List[Dict[str, str]]:
+        ipos = []
+        rows = table.find_all('tr')
+        for row in rows:
+            cells = row.find_all(['td', 'th'])
+            if not cells or all(cell.find('th') or cell.name == 'th' for cell in cells):
+                continue
+            cell_texts = [cell.get_text(strip=True) for cell in cells]
+            ipo_data = self._extract_ipo_info(cell_texts, row)
+            if ipo_data:
+                ipos.append(ipo_data)
+        return ipos
 
 def _parse_date(self, date_str: str) -> str:
         """Convert date string to ISO format (stub)"""
