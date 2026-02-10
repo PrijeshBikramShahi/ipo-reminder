@@ -26,6 +26,13 @@ class IPOBulkUpdate(BaseModel):
     source: str = "scraper"
 
 
+@app.on_event("startup")
+async def startup_event():
+    """Initialize database on startup"""
+    db.init_db()
+    print("✅ Database initialized and ready")
+
+
 @app.get("/")
 def root():
     """Health check endpoint"""
@@ -72,6 +79,8 @@ def update_ipos(data: IPOBulkUpdate):
         # Save new IPOs
         count = db.save_ipos(ipos_data)
         
+        print(f"✅ Updated database with {count} IPO records from {data.source}")
+        
         return {
             "status": "success",
             "message": f"Updated {count} IPO records",
@@ -98,8 +107,10 @@ def get_stats():
 if __name__ == "__main__":
     import uvicorn
     
-    # Initialize database on startup
-    db.init_db()
-    
-    # Run the server
-    uvicorn.run(app, host="0.0.0.0", port=8000, reload=True)
+    # Run the server using import string for reload support
+    uvicorn.run(
+        "app:app",  # Import string format: "module:app_instance"
+        host="0.0.0.0",
+        port=8000,
+        reload=True
+    )
