@@ -1,3 +1,8 @@
+"""
+IPO Scraper - Works both locally and in GitHub Actions
+Scrapes IPO data and either updates local DB or sends to API
+"""
+
 from typing import List, Dict, Optional
 import requests
 from bs4 import BeautifulSoup
@@ -6,28 +11,19 @@ from datetime import datetime, timedelta
 import logging
 import sys
 import os
+import json
 
 # Configure logging
-LOG_DIR = "logs"
-os.makedirs(LOG_DIR, exist_ok=True)
-
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler(f"{LOG_DIR}/scraper_{datetime.now().strftime('%Y%m%d')}.log"),
-        logging.StreamHandler(sys.stdout)
-    ]
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[logging.StreamHandler(sys.stdout)]
 )
-
 logger = logging.getLogger(__name__)
 
 
 class BSToADConverter:
-    """
-    Converter for Bikram Sambat (BS) to Anno Domini (AD) dates
-    Uses a lookup table for BS to AD conversion
-    """
+    """Converter for Bikram Sambat (BS) to Anno Domini (AD) dates"""
     
     BS_MONTHS = {
         'baisakh': 1, 'baishakh': 1,
@@ -58,12 +54,10 @@ class BSToADConverter:
     REFERENCE_AD = datetime(2023, 4, 14)
     
     def normalize_month_name(self, month_name: str) -> Optional[int]:
-        """Normalize BS month name to month number (1-12)"""
         month_lower = month_name.lower().strip()
         return self.BS_MONTHS.get(month_lower)
     
     def parse_bs_date(self, bs_date_str: str) -> Optional[Dict[str, int]]:
-        """Parse BS date string into components"""
         if not bs_date_str:
             return None
         
@@ -85,7 +79,6 @@ class BSToADConverter:
         return {'year': year, 'month': month, 'day': day}
     
     def bs_to_ad(self, bs_year: int, bs_month: int, bs_day: int) -> Optional[str]:
-        """Convert BS date to AD date using lookup table"""
         try:
             if bs_year not in self.BS_MONTH_DAYS:
                 return self._approximate_bs_to_ad(bs_year, bs_month, bs_day)
@@ -106,7 +99,6 @@ class BSToADConverter:
             return None
     
     def _calculate_days_from_reference(self, bs_year: int, bs_month: int, bs_day: int) -> int:
-        """Calculate number of days from reference BS date"""
         days = 0
         ref_year = self.REFERENCE_BS['year']
         ref_month = self.REFERENCE_BS['month']
@@ -138,7 +130,6 @@ class BSToADConverter:
         return days
     
     def _calculate_days_backwards(self, bs_year: int, bs_month: int, bs_day: int) -> int:
-        """Calculate days backwards from reference point"""
         days = 0
         ref_year = self.REFERENCE_BS['year']
         ref_month = self.REFERENCE_BS['month']
@@ -168,7 +159,6 @@ class BSToADConverter:
         return days
     
     def _approximate_bs_to_ad(self, bs_year: int, bs_month: int, bs_day: int) -> str:
-        """Approximate BS to AD conversion for years outside lookup table"""
         ad_year = bs_year - 57
         
         if bs_month >= 10:
@@ -186,7 +176,6 @@ class BSToADConverter:
             return datetime(ad_year, ad_month, 1).strftime('%Y-%m-%d')
     
     def convert_bs_date_string(self, bs_date_str: str) -> Optional[str]:
-        """Convert BS date string directly to AD ISO format"""
         parsed = self.parse_bs_date(bs_date_str)
         if not parsed:
             return None
@@ -203,12 +192,11 @@ class MerolaganiScraper:
     def __init__(self):
         self.session = requests.Session()
         self.session.headers.update({
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
         })
         self.bs_converter = BSToADConverter()
     
     def fetch_upcoming_ipos(self) -> List[Dict[str, str]]:
-        """Fetch upcoming IPO listings from Merolagani"""
         try:
             logger.info(f"Fetching IPOs from {self.IPO_URL}")
             response = self.session.get(self.IPO_URL, timeout=15)
@@ -220,41 +208,33 @@ class MerolaganiScraper:
             ipos_bs = self._parse_media_list(soup)
             ipos_with_ad = self._convert_dates_to_ad(ipos_bs)
             
-            logger.info(f"Successfully scraped {len(ipos_with_ad)} IPOs with valid dates")
+            logger.info(f"Successfully scraped {len(ipos_with_ad)} IPOs")
             return ipos_with_ad
             
-        except requests.RequestException as e:
-            logger.error(f"Network error fetching IPO data: {e}")
-            return []
         except Exception as e:
-            logger.error(f"Error parsing IPO data: {e}", exc_info=True)
+            logger.error(f"Error scraping: {e}", exc_info=True)
             return []
     
     def _parse_media_list(self, soup: BeautifulSoup) -> List[Dict[str, str]]:
-        """Parse IPO entries from the media list format"""
         ipos = []
         
         announcement_list = soup.find('div', class_='announcement-list')
-        
         if not announcement_list:
             announcement_list = soup.find('div', id=re.compile('announcement', re.I))
-        
         if not announcement_list:
             announcement_list = soup.find('div', class_=re.compile('list|container', re.I))
         
         if announcement_list:
             media_divs = announcement_list.find_all('div', class_='media')
-            logger.info(f"Found {len(media_divs)} media divs in announcement list")
+            logger.info(f"Found {len(media_divs)} media divs")
             
             for media_div in media_divs:
                 ipo_data = self._parse_media_div(media_div)
                 if ipo_data:
                     ipos.append(ipo_data)
         else:
-            logger.warning("Could not find announcement-list div, trying fallback")
+            logger.warning("Could not find announcement list, trying fallback")
             all_media_divs = soup.find_all('div', class_='media')
-            logger.info(f"Fallback: Found {len(all_media_divs)} media divs on page")
-            
             for media_div in all_media_divs:
                 ipo_data = self._parse_media_div(media_div)
                 if ipo_data:
@@ -263,25 +243,19 @@ class MerolaganiScraper:
         return ipos
     
     def _parse_media_div(self, media_div) -> Optional[Dict[str, str]]:
-        """Parse a single media div to extract IPO information"""
         try:
             media_body = media_div.find('div', class_='media-body')
-            
             if not media_body:
                 return None
             
             link = media_body.find('a')
-            
             if not link:
                 return None
             
             announcement_text = link.get_text(strip=True)
-            raw_text = announcement_text
             
             if 'ipo' not in announcement_text.lower() and 'share' not in announcement_text.lower():
                 return None
-            
-            logger.debug(f"Processing: {announcement_text[:100]}")
             
             company_name = self._extract_company_name(announcement_text)
             date_info = self._extract_date_range(announcement_text)
@@ -291,7 +265,7 @@ class MerolaganiScraper:
                     'company': company_name,
                     'startDateBS': date_info['start'],
                     'endDateBS': date_info['end'],
-                    'rawText': raw_text
+                    'rawText': announcement_text
                 }
             
             return None
@@ -301,7 +275,6 @@ class MerolaganiScraper:
             return None
     
     def _extract_company_name(self, text: str) -> Optional[str]:
-        """Extract company name from announcement text"""
         separators = [' - ', ' – ', ' — ', ' IPO', ' Share']
         
         for sep in separators:
@@ -324,7 +297,6 @@ class MerolaganiScraper:
         return None
     
     def _extract_date_range(self, text: str) -> Optional[Dict[str, str]]:
-        """Extract BS date range from announcement text"""
         pattern1 = r'(\d{1,2})(?:st|nd|rd|th)\s+(\w+)\s*[-–—]\s*(\d{1,2})(?:st|nd|rd|th)\s+(\w+),?\s*(\d{4})'
         match = re.search(pattern1, text, re.IGNORECASE)
         
@@ -355,7 +327,6 @@ class MerolaganiScraper:
         return None
     
     def _convert_dates_to_ad(self, ipos_bs: List[Dict[str, str]]) -> List[Dict[str, str]]:
-        """Convert BS dates to AD dates for all IPO entries"""
         ipos_with_ad = []
         
         for ipo in ipos_bs:
@@ -368,79 +339,127 @@ class MerolaganiScraper:
                 end_date_ad = self.bs_converter.convert_bs_date_string(ipo['endDateBS'])
             
             if start_date_ad and end_date_ad:
-                ipo_entry = {
+                ipos_with_ad.append({
                     'company': ipo['company'],
-                    'startDateBS': ipo['startDateBS'],
-                    'endDateBS': ipo['endDateBS'],
-                    'startDateAD': start_date_ad,
-                    'endDateAD': end_date_ad,
-                    'rawText': ipo['rawText']
-                }
-                ipos_with_ad.append(ipo_entry)
+                    'startDate': start_date_ad,
+                    'endDate': end_date_ad
+                })
             else:
-                logger.warning(f"Could not convert dates for {ipo['company']}: "
-                             f"Start BS={ipo.get('startDateBS')} -> AD={start_date_ad}, "
-                             f"End BS={ipo.get('endDateBS')} -> AD={end_date_ad}")
+                logger.warning(f"Skipping {ipo['company']} - date conversion failed")
         
         return ipos_with_ad
 
 
-def scrape_and_update_db():
-    """Main function to scrape IPOs and update database"""
-    logger.info("=" * 60)
-    logger.info("IPO Scraper Job Started")
-    logger.info("=" * 60)
-    
+def send_to_api(ipos: List[Dict[str, str]], api_url: str) -> bool:
+    """Send scraped IPO data to the backend API (for GitHub Actions)"""
     try:
-        scraper = MerolaganiScraper()
-        ipos = scraper.fetch_upcoming_ipos()
+        payload = {
+            "ipos": ipos,
+            "source": "github-actions"
+        }
         
-        if not ipos:
-            logger.warning("No IPO data found or scraping failed")
-            return False
+        logger.info(f"Sending {len(ipos)} IPOs to API: {api_url}")
         
-        logger.info(f"Successfully scraped {len(ipos)} IPOs")
+        response = requests.post(
+            api_url,
+            json=payload,
+            headers={"Content-Type": "application/json"},
+            timeout=30
+        )
         
-        # Import db module and update database
-        import db
+        response.raise_for_status()
+        result = response.json()
         
-        # Prepare data for database
-        db_ready_ipos = [
-            {
-                'company': ipo['company'],
-                'startDate': ipo['startDateAD'],
-                'endDate': ipo['endDateAD']
-            }
-            for ipo in ipos
-        ]
-        
-        # Clear old data and insert new data
-        logger.info("Updating database...")
-        db.clear_all_ipos()
-        count = db.save_ipos(db_ready_ipos)
-        
-        logger.info(f"Successfully updated database with {count} IPO records")
-        
-        # Log details of each IPO
-        for i, ipo in enumerate(ipos, 1):
-            logger.info(f"  {i}. {ipo['company']}")
-            logger.info(f"     BS: {ipo['startDateBS']} to {ipo['endDateBS']}")
-            logger.info(f"     AD: {ipo['startDateAD']} to {ipo['endDateAD']}")
-        
-        logger.info("=" * 60)
-        logger.info("IPO Scraper Job Completed Successfully")
-        logger.info("=" * 60)
-        
+        logger.info(f"API Response: {result}")
         return True
         
-    except Exception as e:
-        logger.error(f"Fatal error in scraper job: {e}", exc_info=True)
-        logger.info("=" * 60)
-        logger.info("IPO Scraper Job Failed")
-        logger.info("=" * 60)
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Failed to send data to API: {e}")
         return False
 
 
+def update_local_db(ipos: List[Dict[str, str]]) -> bool:
+    """Update local SQLite database (for local runs)"""
+    try:
+        import db
+        
+        logger.info(f"Updating local database with {len(ipos)} IPOs")
+        db.clear_all_ipos()
+        count = db.save_ipos(ipos)
+        
+        logger.info(f"Successfully updated database with {count} records")
+        return True
+        
+    except Exception as e:
+        logger.error(f"Failed to update local database: {e}")
+        return False
+
+
+def save_to_file(ipos: List[Dict[str, str]]):
+    """Save IPO data to JSON file as backup"""
+    output_file = "scraped_ipos.json"
+    with open(output_file, 'w') as f:
+        json.dump({
+            "scraped_at": datetime.now().isoformat(),
+            "count": len(ipos),
+            "ipos": ipos
+        }, f, indent=2)
+    logger.info(f"Saved {len(ipos)} IPOs to {output_file}")
+
+
+def scrape_and_update():
+    """Main function - works both locally and in GitHub Actions"""
+    logger.info("=" * 60)
+    logger.info("IPO Scraper Started")
+    logger.info("=" * 60)
+    
+    # Check if running in GitHub Actions
+    api_url = os.environ.get('API_URL')
+    is_github_actions = api_url is not None
+    
+    if is_github_actions:
+        logger.info(f"Running in GitHub Actions mode")
+        logger.info(f"Target API: {api_url}")
+    else:
+        logger.info("Running in local mode")
+    
+    # Scrape IPOs
+    scraper = MerolaganiScraper()
+    ipos = scraper.fetch_upcoming_ipos()
+    
+    if not ipos:
+        logger.warning("No IPO data scraped")
+        return False
+    
+    logger.info(f"Successfully scraped {len(ipos)} IPOs:")
+    for i, ipo in enumerate(ipos, 1):
+        logger.info(f"  {i}. {ipo['company']}: {ipo['startDate']} to {ipo['endDate']}")
+    
+    # Update database or send to API
+    success = False
+    
+    if is_github_actions:
+        # GitHub Actions: Send to API
+        success = send_to_api(ipos, api_url)
+        if not success:
+            logger.warning("API update failed, saving to backup file")
+            save_to_file(ipos)
+    else:
+        # Local: Update database directly
+        success = update_local_db(ipos)
+        if success:
+            save_to_file(ipos)  # Also save backup
+    
+    logger.info("=" * 60)
+    if success:
+        logger.info("✅ Scraper Completed Successfully")
+    else:
+        logger.info("❌ Scraper Completed with Errors")
+    logger.info("=" * 60)
+    
+    return success
+
+
 if __name__ == "__main__":
-    success = scrape_and_update_db()
+    success = scrape_and_update()
     sys.exit(0 if success else 1)
