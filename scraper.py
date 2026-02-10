@@ -85,10 +85,11 @@ class MerolaganiScraper:
             print(f"Fetching IPOs from {self.IPO_URL}...")
             response = self.session.get(self.IPO_URL, timeout=10)
             response.raise_for_status()
-            soup = BeautifulSoup(response.content, 'html.parser')
-            ipos = self._parse_ipo_entries(soup)
-            print(f"Found {len(ipos)} IPO entries")
-            return ipos
+            soup = BeautifulSoup(self.session.get(self.IPO_URL).content, 'html.parser')
+            ipos_bs = self._parse_ipo_entries(soup)
+            ipos_with_ad = self._convert_dates_to_ad(ipos_bs)
+            print(f"Found {len(ipos_with_ad)} IPO entries with valid dates")
+            return ipos_with_ad
         except requests.RequestException as e:
             print(f"Error fetching IPO data: {e}")
             return []
