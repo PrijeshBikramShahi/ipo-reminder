@@ -67,6 +67,7 @@ def save_ipos(ipos: List[Dict[str, str]]) -> int:
     return count
 
 def get_upcoming_ipos(limit: Optional[int] = None) -> List[Dict[str, str]]:
+    """Retrieve upcoming IPOs from the database"""
     conn = get_connection()
     cursor = conn.cursor()
     
@@ -82,5 +83,26 @@ def get_upcoming_ipos(limit: Optional[int] = None) -> List[Dict[str, str]]:
         {"company": row["company"], "startDate": row["start_date"], "endDate": row["end_date"]}
         for row in rows
     ]
+
+
+def clear_all_ipos():
+    """Delete all IPO records from the database"""
+    conn = get_connection()
+    cursor = conn.cursor()
     
+    cursor.execute("DELETE FROM ipos")
     
+    conn.commit()
+    conn.close()
+
+
+def get_ipo_count() -> int:
+    """Get total count of IPOs in database"""
+    conn = get_connection()
+    cursor = conn.cursor()
+    
+    cursor.execute("SELECT COUNT(*) as count FROM ipos")
+    count = cursor.fetchone()["count"]
+    
+    conn.close()
+    return count
