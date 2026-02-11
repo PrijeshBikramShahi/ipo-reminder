@@ -4,7 +4,7 @@ from typing import List, Dict
 from pydantic import BaseModel
 from notification_service import NotificationService
 from scheduler import NotificationScheduler
-import db
+import db_postgres as db
 
 app = FastAPI(title="IPO Reminder Backend")
 
