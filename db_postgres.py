@@ -8,9 +8,11 @@ from typing import List, Dict, Optional
 # Database configuration
 DATABASE_URL = os.getenv('DATABASE_URL', 'sqlite:///ipos.db')
 
-# Handle Render's postgres:// to postgresql:// conversion
-if DATABASE_URL.startswith('postgres://'):
-    DATABASE_URL = DATABASE_URL.replace('postgres://', 'postgresql://')
+# Normalize Render URL for SQLAlchemy + psycopg (required for Python 3.13)
+if DATABASE_URL.startswith("postgres://"):
+    DATABASE_URL = DATABASE_URL.replace(
+        "postgres://", "postgresql+psycopg://", 1
+    )
 
 # Create engine with connection pooling
 engine = create_engine(
