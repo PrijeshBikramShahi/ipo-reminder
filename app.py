@@ -2,9 +2,16 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from typing import List, Dict
 from pydantic import BaseModel
+from notification_service import NotificationService
+from scheduler import NotificationScheduler
 import db
 
 app = FastAPI(title="IPO Reminder Backend")
+
+# Initialize services
+notification_service = NotificationService()
+notification_scheduler = NotificationScheduler()
+
 
 # Enable CORS
 app.add_middleware(
@@ -15,6 +22,17 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+# Pydantic models
+class FCMTokenRequest(BaseModel):
+    token: str
+    deviceId: str = None
+    platform: str = None
+
+class TestNotificationRequest(BaseModel):
+    token: str
+    
+    
 # Pydantic models for request validation
 class IPOEntry(BaseModel):
     company: str
@@ -102,6 +120,64 @@ def get_stats():
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+
+
+@app.on_event("startup")
+async def startup_event():
+    """Initialize database and start scheduler on startup"""
+    db.init_db()
+    notification_scheduler.start()
+    print("✅ Database initialized and notification scheduler started")
+
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Stop scheduler on shutdown"""
+    notification_scheduler.stop()
+    print("🛑 Notification scheduler stopped")
+
+
+@app.post("/fcm/register")
+def register_fcm_token(data: FCMTokenRequest):
+    """Register FCM token for notifications"""
+    try:
+        token_id = db.save_fcm_token(data.token, data.deviceId, data.platform)
+        return {
+            "status": "success",
+            "message": "FCM token registered successfully",
+            "tokenId": token_id
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Registration failed: {str(e)}")
+
+
+@app.post("/fcm/unregister")
+def unregister_fcm_token(data: FCMTokenRequest):
+    """Unregister FCM token"""
+    try:
+        db.deactivate_fcm_token(data.token)
+        return {
+            "status": "success",
+            "message": "FCM token unregistered successfully"
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Unregistration failed: {str(e)}")
+
+
+@app.post("/notifications/test")
+def send_test_notification(data: TestNotificationRequest):
+    """Send a test notification"""
+    try:
+        success = notification_scheduler.send_test_notification(data.token)
+        if success:
+            return {
+                "status": "success",
+                "message": "Test notification sent"
+            }
+        else:
+            raise HTTPException(status_code=500, detail="Failed to send test notification")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 if __name__ == "__main__":
