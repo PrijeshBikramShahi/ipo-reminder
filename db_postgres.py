@@ -16,7 +16,7 @@ if DATABASE_URL.startswith("postgres://"):
 
 # Create engine with connection pooling
 engine = create_engine(
-    DATABASE_URL, 
+    DATABASE_URL.replace("postgresql://", "postgresql+psycopg://"), 
     pool_pre_ping=True,
     pool_recycle=3600,
     echo=False  # Set to True for debugging
